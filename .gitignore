@@ -3,9 +3,7 @@
 .env.local
 *.env
 
-# Contains real DB password, JWT secret, and Gmail app password for local dev.
-# A safe template lives in application.properties.example — commit that instead.
-src/main/resources/application.properties
+
 
 # Build output
 target/
