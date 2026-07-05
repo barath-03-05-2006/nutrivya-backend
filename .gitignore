@@ -1,0 +1,28 @@
+# Environment secrets — NEVER commit these
+.env
+.env.local
+*.env
+
+# Contains real DB password, JWT secret, and Gmail app password for local dev.
+# A safe template lives in application.properties.example — commit that instead.
+src/main/resources/application.properties
+
+# Build output
+target/
+bin/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
