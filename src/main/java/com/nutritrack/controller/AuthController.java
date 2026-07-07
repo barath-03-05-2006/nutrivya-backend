@@ -107,9 +107,11 @@ public class AuthController {
         try {
             passwordResetService.sendResetLink(body.get("email"));
             return ResponseEntity.ok(Map.of("message", "Reset link sent successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.ok(Map.of("message", "If this email is registered, a reset link has been sent"));
-        }
+        // NEW
+} catch (Exception e) {
+    log.error("Forgot-password request failed for email [{}]: {}", body.get("email"), e.getMessage(), e);
+    return ResponseEntity.ok(Map.of("message", "If this email is registered, a reset link has been sent"));
+}
     }
 
     @PostMapping("/reset-password")
