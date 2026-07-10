@@ -14,10 +14,13 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     @Autowired private AuthService authService;
     @Autowired private UserRepository userRepo;
@@ -104,9 +107,11 @@ public class AuthController {
         try {
             passwordResetService.sendResetLink(body.get("email"));
             return ResponseEntity.ok(Map.of("message", "Reset link sent successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.ok(Map.of("message", "If this email is registered, a reset link has been sent"));
-        }
+        // NEW
+} catch (Exception e) {
+    log.error("Forgot-password request failed for email [{}]: {}", body.get("email"), e.getMessage(), e);
+    return ResponseEntity.ok(Map.of("message", "If this email is registered, a reset link has been sent"));
+}
     }
 
     @PostMapping("/reset-password")

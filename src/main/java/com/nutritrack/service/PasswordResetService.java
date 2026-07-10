@@ -45,7 +45,8 @@ public class PasswordResetService {
             helper.setText(buildEmailHtml(user.getFullName(), resetLink), true);
             mailSender.send(msg);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to send email: " + e.getMessage());
+            // NEW
+            throw new RuntimeException("Failed to send email: " + e.getMessage(), e);
         }
     }
 

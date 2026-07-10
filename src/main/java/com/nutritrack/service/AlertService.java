@@ -5,7 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -33,7 +33,7 @@ public class AlertService {
 
     /** Returns true if the same alert type was already fired for this client within DEDUP_HOURS */
     private boolean alreadyFiredRecently(Long clientId, Alert.AlertType type) {
-        LocalDateTime since = LocalDateTime.now().minusHours(DEDUP_HOURS);
+        Instant since = Instant.now().minus(DEDUP_HOURS, java.time.temporal.ChronoUnit.HOURS);
         return alertRepo.existsByClientIdAndAlertTypeAndCreatedAtAfter(clientId, type, since);
     }
 

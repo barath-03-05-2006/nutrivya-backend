@@ -129,6 +129,46 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
         return ResponseEntity.ok(Map.of("success", true));
     }
 
+    // ── DIETITIAN EDITS THEIR OWN NOTE ──────────────────────────────
+    @PutMapping("/progress-note/{noteId}")
+    public ResponseEntity<?> updateNote(@PathVariable Long noteId,
+            @RequestBody Map<String,String> body, Authentication auth){
+        User d = guard.currentUser(auth);
+        ProgressNote n = noteRepo.findById(noteId)
+                .orElseThrow(() -> new AccessGuard.AccessDeniedException("Note not found"));
+        guard.requireDietitianOwnership(auth, n.getClient().getId());
+        if (n.getDietitian() == null || !n.getDietitian().getId().equals(d.getId())) {
+            throw new AccessGuard.AccessDeniedException("You can only edit notes you wrote yourself");
+        }
+
+        String noteText = body.get("note");
+        if (noteText == null || noteText.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Note cannot be empty"));
+        }
+        if (noteText.length() > 1000) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Note is too long (max 1000 characters)"));
+        }
+
+        n.setNote(noteText.trim());
+        n.setUpdatedAt(java.time.Instant.now());
+        noteRepo.save(n);
+        return ResponseEntity.ok(Map.of("success", true));
+    }
+
+    // ── DIETITIAN DELETES THEIR OWN NOTE ────────────────────────────
+    @DeleteMapping("/progress-note/{noteId}")
+    public ResponseEntity<?> deleteNote(@PathVariable Long noteId, Authentication auth){
+        User d = guard.currentUser(auth);
+        ProgressNote n = noteRepo.findById(noteId)
+                .orElseThrow(() -> new AccessGuard.AccessDeniedException("Note not found"));
+        guard.requireDietitianOwnership(auth, n.getClient().getId());
+        if (n.getDietitian() == null || !n.getDietitian().getId().equals(d.getId())) {
+            throw new AccessGuard.AccessDeniedException("You can only delete notes you wrote yourself");
+        }
+        noteRepo.delete(n);
+        return ResponseEntity.ok(Map.of("success", true));
+    }
+
     // ── DIETITIAN READS A CLIENT'S NOTES ───────────────────────────
     @GetMapping("/progress-notes/{clientId}")
     public ResponseEntity<?> getNotes(@PathVariable Long clientId, Authentication auth){
@@ -150,6 +190,8 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
         dto.put("id", n.getId());
         dto.put("note", n.getNote());
         dto.put("createdAt", n.getCreatedAt());
+        dto.put("updatedAt", n.getUpdatedAt());
+        dto.put("dietitianId", n.getDietitian() != null ? n.getDietitian().getId() : null);
         dto.put("dietitianName", n.getDietitian() != null ? n.getDietitian().getFullName() : null);
         return dto;
     }

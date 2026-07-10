@@ -3,7 +3,7 @@ import com.nutritrack.entity.Alert;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 public interface AlertRepository extends JpaRepository<Alert, Long> {
@@ -19,9 +19,9 @@ public interface AlertRepository extends JpaRepository<Alert, Long> {
     boolean existsByClientIdAndAlertTypeAndCreatedAtAfter(
         @Param("clientId") Long clientId,
         @Param("alertType") Alert.AlertType alertType,
-        @Param("since") LocalDateTime since
+        @Param("since") Instant since
     );
 
     @Query("SELECT a FROM Alert a WHERE a.createdAt < :cutoff")
-    List<Alert> findOlderThan(@Param("cutoff") LocalDateTime cutoff);
+    List<Alert> findOlderThan(@Param("cutoff") Instant cutoff);
 }

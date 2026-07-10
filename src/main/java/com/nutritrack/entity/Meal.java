@@ -26,7 +26,7 @@ public class Meal {
     private Integer actualCalories; private Double actualProtein; private Double actualCarbs;
     private Double actualFat; private Double actualFiber;
 
-    public enum MealType{EARLY_MORNING,BREAKFAST,MID_MORNING,LUNCH,EVENING_SNACK,DINNER}
+    public enum MealType{EARLY_MORNING,BREAKFAST,MID_MORNING,LUNCH,EVENING_SNACK,DINNER,BEDTIME}
     public Long getId(){return id;} public void setId(Long v){id=v;}
     public MealPlan getMealPlan(){return mealPlan;} public void setMealPlan(MealPlan v){mealPlan=v;}
     public MealType getMealType(){return mealType;} public void setMealType(MealType v){mealType=v;}
