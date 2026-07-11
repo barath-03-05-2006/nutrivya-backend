@@ -64,6 +64,7 @@ public class SecurityConfig {
             frontendUrl,
             "http://localhost:3000",   // local React dev
             "http://localhost:3001",   // alternate local port
+            "http://localhost:[*]",    // local Flutter web testing (any port)
             "https://nutrivya.co.in", // production domain
             "https://*.vercel.app"    // Vercel preview deployments
         ));
