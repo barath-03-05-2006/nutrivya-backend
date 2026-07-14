@@ -10,7 +10,7 @@ public class ProgressPhoto {
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="client_id", nullable=false)
     private User client;
 
-    @Lob @Column(columnDefinition="LONGBLOB") private byte[] imageData;
+    @Lob @Column(columnDefinition="BYTEA") private byte[] imageData;
     private String imageType; // e.g. "image/jpeg"
 
     private String label; // "Before", "After", or a custom note
