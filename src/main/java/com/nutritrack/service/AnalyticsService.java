@@ -81,7 +81,8 @@ public class AnalyticsService {
         User client=userRepo.findById(clientId).orElseThrow();
         DailyLog log=dailyLogRepo.findByClientAndLogDate(client,date)
             .orElseGet(()->{DailyLog dl=new DailyLog();dl.setClient(client);dl.setLogDate(date);return dl;});
-        log.setWaterIntake(amount); dailyLogRepo.save(log);
+        log.setWaterIntake(log.getWaterIntake() + amount);
+        dailyLogRepo.save(log);
     }
 
     public WeightLog logWeight(Long clientId, double weight, LocalDate date, String notes){
