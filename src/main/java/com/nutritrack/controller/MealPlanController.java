@@ -151,15 +151,15 @@ public class MealPlanController {
         }
     }
 
-    /** Client: "I actually ate something different" note for a specific meal. */
-    @PostMapping("/meal/{mealId}/deviation")
-    public ResponseEntity<?> reportDeviation(@PathVariable Long mealId,
+    /** Client: "I actually ate something different" note for ONE food item in a meal. */
+    @PostMapping("/food-item/{foodItemId}/deviation")
+    public ResponseEntity<?> reportFoodItemDeviation(@PathVariable Long foodItemId,
                                               @RequestBody Map<String, Object> body,
                                               Authentication auth) {
         try {
             User client = userRepo.findByEmail(auth.getName()).orElseThrow();
             String note = body.get("note") != null ? body.get("note").toString() : null;
-            mealPlanService.reportDeviation(mealId, client.getId(), note);
+            mealPlanService.reportFoodItemDeviation(foodItemId, client.getId(), note);
             return ResponseEntity.ok(Map.of("success", true));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error",
@@ -167,9 +167,9 @@ public class MealPlanController {
         }
     }
 
-    /** Dietitian: recalculate and save the actual nutrition for a reported deviation. */
-    @PutMapping("/meal/{mealId}/actual-nutrition")
-    public ResponseEntity<?> updateActualNutrition(@PathVariable Long mealId,
+    /** Dietitian: recalculate and save the actual nutrition for ONE food item's reported deviation. */
+    @PutMapping("/food-item/{foodItemId}/actual-nutrition")
+    public ResponseEntity<?> updateFoodItemActualNutrition(@PathVariable Long foodItemId,
                                                     @RequestBody Map<String, Object> body,
                                                     Authentication auth) {
         try {
@@ -179,7 +179,7 @@ public class MealPlanController {
             Double carbs = body.get("carbs") != null ? Double.parseDouble(body.get("carbs").toString()) : 0.0;
             Double fat = body.get("fat") != null ? Double.parseDouble(body.get("fat").toString()) : 0.0;
             Double fiber = body.get("fiber") != null ? Double.parseDouble(body.get("fiber").toString()) : 0.0;
-            mealPlanService.updateActualNutrition(mealId, dietitian.getId(), calories, protein, carbs, fat, fiber);
+            mealPlanService.updateFoodItemActualNutrition(foodItemId, dietitian.getId(), calories, protein, carbs, fat, fiber);
             return ResponseEntity.ok(Map.of("success", true));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error",
@@ -209,16 +209,14 @@ public class MealPlanController {
                 mDto.put("totalCarbs", m.getTotalCarbs() != null ? m.getTotalCarbs() : 0.0);
                 mDto.put("totalFat", m.getTotalFat() != null ? m.getTotalFat() : 0.0);
                 mDto.put("totalFiber", m.getTotalFiber() != null ? m.getTotalFiber() : 0.0);
-                mDto.put("clientNote", m.getClientNote());
-                mDto.put("hasDeviation", m.isHasDeviation());
-                mDto.put("deviationReviewed", m.isDeviationReviewed());
-                mDto.put("actualCalories", m.getActualCalories());
-                mDto.put("actualProtein", m.getActualProtein());
-                mDto.put("actualCarbs", m.getActualCarbs());
-                mDto.put("actualFat", m.getActualFat());
-                mDto.put("actualFiber", m.getActualFiber());
 
                 List<Map<String, Object>> foodDtos = new ArrayList<>();
+                // Rolled up from food-item level: true if ANY item in the meal has a
+                // client-reported deviation, and the meal's "current" nutrition (actual where a
+                // dietitian has reviewed an item's deviation, planned otherwise) summed per item.
+                boolean mealHasDeviation = false, mealDeviationReviewed = true;
+                boolean anyReviewed = false;
+                int curCal = 0; double curPro = 0, curCarb = 0, curFat = 0, curFib = 0;
                 if (m.getFoodItems() != null) {
                     for (FoodItem fi : m.getFoodItems()) {
                         Map<String, Object> fDto = new LinkedHashMap<>();
@@ -231,16 +229,44 @@ public class MealPlanController {
                         fDto.put("carbohydrates", fi.getCarbohydrates() != null ? fi.getCarbohydrates() : 0.0);
                         fDto.put("fat", fi.getFat() != null ? fi.getFat() : 0.0);
                         fDto.put("fiber", fi.getFiber() != null ? fi.getFiber() : 0.0);
+                        fDto.put("clientNote", fi.getClientNote());
+                        fDto.put("hasDeviation", fi.isHasDeviation());
+                        fDto.put("deviationReviewed", fi.isDeviationReviewed());
+                        fDto.put("actualCalories", fi.getActualCalories());
+                        fDto.put("actualProtein", fi.getActualProtein());
+                        fDto.put("actualCarbs", fi.getActualCarbs());
+                        fDto.put("actualFat", fi.getActualFat());
+                        fDto.put("actualFiber", fi.getActualFiber());
                         foodDtos.add(fDto);
+
+                        if (fi.isHasDeviation()) {
+                            mealHasDeviation = true;
+                            if (!fi.isDeviationReviewed()) mealDeviationReviewed = false;
+                        }
+                        if (fi.getActualCalories() != null) anyReviewed = true;
+                        curCal += (fi.getActualCalories() != null ? fi.getActualCalories() : (fi.getCalories() != null ? fi.getCalories() : 0));
+                        curPro += (fi.getActualProtein() != null ? fi.getActualProtein() : (fi.getProtein() != null ? fi.getProtein() : 0.0));
+                        curCarb += (fi.getActualCarbs() != null ? fi.getActualCarbs() : (fi.getCarbohydrates() != null ? fi.getCarbohydrates() : 0.0));
+                        curFat += (fi.getActualFat() != null ? fi.getActualFat() : (fi.getFat() != null ? fi.getFat() : 0.0));
+                        curFib += (fi.getActualFiber() != null ? fi.getActualFiber() : (fi.getFiber() != null ? fi.getFiber() : 0.0));
                     }
                 }
+                mDto.put("hasDeviation", mealHasDeviation);
+                mDto.put("deviationReviewed", mealHasDeviation && mealDeviationReviewed);
+                // Only surface a meal-level "actual" figure once at least one item has been
+                // reviewed — otherwise the frontend's `actualX ?? totalX` fallback shows planned.
+                mDto.put("actualCalories", anyReviewed ? curCal : null);
+                mDto.put("actualProtein", anyReviewed ? curPro : null);
+                mDto.put("actualCarbs", anyReviewed ? curCarb : null);
+                mDto.put("actualFat", anyReviewed ? curFat : null);
+                mDto.put("actualFiber", anyReviewed ? curFib : null);
                 mDto.put("foodItems", foodDtos);
                 mealDtos.add(mDto);
-                totalCal += (m.getActualCalories() != null ? m.getActualCalories() : (m.getTotalCalories() != null ? m.getTotalCalories() : 0));
-                totalPro += (m.getActualProtein() != null ? m.getActualProtein() : (m.getTotalProtein() != null ? m.getTotalProtein() : 0.0));
-                totalCarb += (m.getActualCarbs() != null ? m.getActualCarbs() : (m.getTotalCarbs() != null ? m.getTotalCarbs() : 0.0));
-                totalFat += (m.getActualFat() != null ? m.getActualFat() : (m.getTotalFat() != null ? m.getTotalFat() : 0.0));
-                totalFib += (m.getActualFiber() != null ? m.getActualFiber() : (m.getTotalFiber() != null ? m.getTotalFiber() : 0.0));
+                totalCal += (anyReviewed ? curCal : (m.getTotalCalories() != null ? m.getTotalCalories() : 0));
+                totalPro += (anyReviewed ? curPro : (m.getTotalProtein() != null ? m.getTotalProtein() : 0.0));
+                totalCarb += (anyReviewed ? curCarb : (m.getTotalCarbs() != null ? m.getTotalCarbs() : 0.0));
+                totalFat += (anyReviewed ? curFat : (m.getTotalFat() != null ? m.getTotalFat() : 0.0));
+                totalFib += (anyReviewed ? curFib : (m.getTotalFiber() != null ? m.getTotalFiber() : 0.0));
             }
         }
         dto.put("meals", mealDtos);

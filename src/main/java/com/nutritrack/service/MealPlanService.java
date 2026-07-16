@@ -14,6 +14,7 @@ public class MealPlanService {
 
     @Autowired private MealPlanRepository mealPlanRepo;
     @Autowired private MealRepository mealRepo;
+    @Autowired private FoodItemRepository foodItemRepo;
     @Autowired private UserRepository userRepo;
     @Autowired private DailyLogRepository dailyLogRepo;
     @Autowired private AlertRepository alertRepo;
@@ -157,13 +158,24 @@ public class MealPlanService {
             LocalDate date = meal.getMealPlan().getPlanDate();
             DailyLog log = dailyLogRepo.findByClientAndLogDate(client, date)
                     .orElseGet(() -> { DailyLog dl = new DailyLog(); dl.setClient(client); dl.setLogDate(date); return dl; });
-            // Prefer dietitian-reviewed actual nutrition (if a deviation was already recalculated
-            // before the meal was ticked complete) over the originally planned totals.
-            log.setCaloriesConsumed(log.getCaloriesConsumed() + nz(meal.getActualCalories() != null ? meal.getActualCalories() : meal.getTotalCalories()));
-            log.setProteinConsumed(log.getProteinConsumed() + nz(meal.getActualProtein() != null ? meal.getActualProtein() : meal.getTotalProtein()));
-            log.setCarbsConsumed(log.getCarbsConsumed() + nz(meal.getActualCarbs() != null ? meal.getActualCarbs() : meal.getTotalCarbs()));
-            log.setFatConsumed(log.getFatConsumed() + nz(meal.getActualFat() != null ? meal.getActualFat() : meal.getTotalFat()));
-            log.setFiberConsumed(log.getFiberConsumed() + nz(meal.getActualFiber() != null ? meal.getActualFiber() : meal.getTotalFiber()));
+            // Sum per food item, preferring dietitian-reviewed actual nutrition (if a deviation
+            // was already recalculated for that item before the meal was ticked complete) over
+            // the originally planned value for that item. Items without a deviation just use plan.
+            int cal = 0; double pro = 0, carb = 0, fat = 0, fib = 0;
+            if (meal.getFoodItems() != null) {
+                for (FoodItem fi : meal.getFoodItems()) {
+                    cal += nz(fi.getActualCalories() != null ? fi.getActualCalories() : fi.getCalories());
+                    pro += nz(fi.getActualProtein() != null ? fi.getActualProtein() : fi.getProtein());
+                    carb += nz(fi.getActualCarbs() != null ? fi.getActualCarbs() : fi.getCarbohydrates());
+                    fat += nz(fi.getActualFat() != null ? fi.getActualFat() : fi.getFat());
+                    fib += nz(fi.getActualFiber() != null ? fi.getActualFiber() : fi.getFiber());
+                }
+            }
+            log.setCaloriesConsumed(log.getCaloriesConsumed() + cal);
+            log.setProteinConsumed(log.getProteinConsumed() + pro);
+            log.setCarbsConsumed(log.getCarbsConsumed() + carb);
+            log.setFatConsumed(log.getFatConsumed() + fat);
+            log.setFiberConsumed(log.getFiberConsumed() + fib);
             log.setMealsCompleted(log.getMealsCompleted() + 1);
             dailyLogRepo.save(log);
         }
@@ -171,13 +183,15 @@ public class MealPlanService {
 
     /**
      * Client reports that they ate something different from what the dietitian planned for
-     * this meal. Just records the note — nutrition stays as originally planned/logged until
-     * the dietitian reviews it and recalculates the actual values below.
+     * ONE specific food item within a meal — the other items in the meal are unaffected. Just
+     * records the note — nutrition stays as originally planned/logged until the dietitian
+     * reviews it and recalculates the actual values below.
      */
     @Transactional
-    public void reportDeviation(Long mealId, Long clientId, String note) {
-        Meal meal = mealRepo.findById(mealId)
-                .orElseThrow(() -> new RuntimeException("Meal not found"));
+    public void reportFoodItemDeviation(Long foodItemId, Long clientId, String note) {
+        FoodItem item = foodItemRepo.findById(foodItemId)
+                .orElseThrow(() -> new RuntimeException("Food item not found"));
+        Meal meal = item.getMeal();
         User client = meal.getMealPlan().getClient();
         if (client == null || !client.getId().equals(clientId)) {
             throw new RuntimeException("Not authorized to update this meal");
@@ -185,11 +199,11 @@ public class MealPlanService {
         if (note == null || note.trim().isEmpty()) {
             throw new RuntimeException("Please describe what you actually ate");
         }
-        meal.setClientNote(note.trim());
-        meal.setHasDeviation(true);
-        meal.setDeviationReviewed(false);
-        meal.setDeviationLoggedAt(LocalDateTime.now());
-        mealRepo.save(meal);
+        item.setClientNote(note.trim());
+        item.setHasDeviation(true);
+        item.setDeviationReviewed(false);
+        item.setDeviationLoggedAt(LocalDateTime.now());
+        foodItemRepo.save(item);
 
         // Let the dietitian know there's something to review.
         User dietitian = meal.getMealPlan().getDietitian();
@@ -199,25 +213,27 @@ public class MealPlanService {
             a.setDietitian(dietitian);
             a.setAlertType(Alert.AlertType.DIET_DEVIATION);
             a.setMessage((client.getFullName() != null ? client.getFullName() : "A client")
-                    + " logged a different meal than planned ("
+                    + " logged a different food (" + item.getFoodName() + ") in "
                     + (meal.getMealName() != null ? meal.getMealName() : meal.getMealType())
-                    + ") — recalculate nutrition to keep their log accurate.");
+                    + " — recalculate nutrition to keep their log accurate.");
             a.setRead(false);
             alertRepo.save(a);
         }
     }
 
     /**
-     * Dietitian reviews a client's reported deviation and enters the recalculated nutrition
-     * for what was actually eaten. This replaces whatever was previously counted for this meal
-     * in the client's daily log (planned totals, or a prior actual figure) with the new values,
-     * and marks the meal completed since the client has now logged what they ate.
+     * Dietitian reviews a client's reported deviation for ONE food item and enters the
+     * recalculated nutrition for what was actually eaten. This replaces whatever was previously
+     * counted for that item in the client's daily log (planned value, or a prior actual figure)
+     * with the new values. Other food items in the meal, and the meal's completion state, are
+     * untouched — the meal is only marked complete when the client taps "Mark as Complete".
      */
     @Transactional
-    public void updateActualNutrition(Long mealId, Long dietitianId, Integer calories,
+    public void updateFoodItemActualNutrition(Long foodItemId, Long dietitianId, Integer calories,
             Double protein, Double carbs, Double fat, Double fiber) {
-        Meal meal = mealRepo.findById(mealId)
-                .orElseThrow(() -> new RuntimeException("Meal not found"));
+        FoodItem item = foodItemRepo.findById(foodItemId)
+                .orElseThrow(() -> new RuntimeException("Food item not found"));
+        Meal meal = item.getMeal();
         MealPlan plan = meal.getMealPlan();
         if (plan.getDietitian() == null || !plan.getDietitian().getId().equals(dietitianId)) {
             throw new RuntimeException("Not authorized to update this meal");
@@ -228,34 +244,35 @@ public class MealPlanService {
         DailyLog log = dailyLogRepo.findByClientAndLogDate(client, date)
                 .orElseGet(() -> { DailyLog dl = new DailyLog(); dl.setClient(client); dl.setLogDate(date); return dl; });
 
-        // Whatever is currently sitting in the daily log for this meal (0 if it was never
-        // marked complete yet).
-        boolean wasCompleted = meal.isCompleted();
-        int prevCal = wasCompleted ? nz(meal.getActualCalories() != null ? meal.getActualCalories() : meal.getTotalCalories()) : 0;
-        double prevPro = wasCompleted ? nz(meal.getActualProtein() != null ? meal.getActualProtein() : meal.getTotalProtein()) : 0;
-        double prevCarb = wasCompleted ? nz(meal.getActualCarbs() != null ? meal.getActualCarbs() : meal.getTotalCarbs()) : 0;
-        double prevFat = wasCompleted ? nz(meal.getActualFat() != null ? meal.getActualFat() : meal.getTotalFat()) : 0;
-        double prevFib = wasCompleted ? nz(meal.getActualFiber() != null ? meal.getActualFiber() : meal.getTotalFiber()) : 0;
+        // This item's previous contribution to the daily log — 0 unless the meal has already
+        // been marked complete (in which case the log currently holds either the item's planned
+        // value, or an earlier actual figure if it was reviewed more than once).
+        boolean mealWasCompleted = meal.isCompleted();
+        int prevCal = mealWasCompleted ? nz(item.getActualCalories() != null ? item.getActualCalories() : item.getCalories()) : 0;
+        double prevPro = mealWasCompleted ? nz(item.getActualProtein() != null ? item.getActualProtein() : item.getProtein()) : 0;
+        double prevCarb = mealWasCompleted ? nz(item.getActualCarbs() != null ? item.getActualCarbs() : item.getCarbohydrates()) : 0;
+        double prevFat = mealWasCompleted ? nz(item.getActualFat() != null ? item.getActualFat() : item.getFat()) : 0;
+        double prevFib = mealWasCompleted ? nz(item.getActualFiber() != null ? item.getActualFiber() : item.getFiber()) : 0;
 
-        meal.setActualCalories(calories);
-        meal.setActualProtein(protein);
-        meal.setActualCarbs(carbs);
-        meal.setActualFat(fat);
-        meal.setActualFiber(fiber);
-        meal.setDeviationReviewed(true);
-        meal.setDeviationReviewedAt(LocalDateTime.now());
+        item.setActualCalories(calories);
+        item.setActualProtein(protein);
+        item.setActualCarbs(carbs);
+        item.setActualFat(fat);
+        item.setActualFiber(fiber);
+        item.setDeviationReviewed(true);
+        item.setDeviationReviewedAt(LocalDateTime.now());
+        foodItemRepo.save(item);
 
-        boolean justCompleted = !meal.isCompleted();
-        meal.setCompleted(true);
-        mealRepo.save(meal);
-
-        log.setCaloriesConsumed(log.getCaloriesConsumed() - prevCal + nz(calories));
-        log.setProteinConsumed(log.getProteinConsumed() - prevPro + nz(protein));
-        log.setCarbsConsumed(log.getCarbsConsumed() - prevCarb + nz(carbs));
-        log.setFatConsumed(log.getFatConsumed() - prevFat + nz(fat));
-        log.setFiberConsumed(log.getFiberConsumed() - prevFib + nz(fiber));
-        if (justCompleted) log.setMealsCompleted(log.getMealsCompleted() + 1);
-        dailyLogRepo.save(log);
+        if (mealWasCompleted) {
+            log.setCaloriesConsumed(log.getCaloriesConsumed() - prevCal + nz(calories));
+            log.setProteinConsumed(log.getProteinConsumed() - prevPro + nz(protein));
+            log.setCarbsConsumed(log.getCarbsConsumed() - prevCarb + nz(carbs));
+            log.setFatConsumed(log.getFatConsumed() - prevFat + nz(fat));
+            log.setFiberConsumed(log.getFiberConsumed() - prevFib + nz(fiber));
+            dailyLogRepo.save(log);
+        }
+        // If the meal isn't complete yet, nothing has hit the log for it — completeMeal() will
+        // pick up this item's new actual values when the client later taps "Mark as Complete".
     }
 
     private int nz(Integer v) { return v != null ? v : 0; }
