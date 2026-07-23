@@ -42,7 +42,8 @@ public class SecurityConfig {
             		        "/api/auth/login",
             		        "/api/auth/register",
             		        "/api/auth/forgot-password",
-            		        "/api/auth/reset-password"
+            		        "/api/auth/reset-password",
+            		        "/privacy-policy.html"
             		    ).permitAll()
                 // OPTIONS preflight always allowed
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
