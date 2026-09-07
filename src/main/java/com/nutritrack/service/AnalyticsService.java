@@ -77,6 +77,54 @@ public class AnalyticsService {
         return r;
     }
 
+    // NEW: batched version of getClientOverview() for the dietitian's full client list.
+    // Replaces N sequential per-client queries with 3 bulk queries total, regardless of client count.
+    public List<Map<String,Object>> getClientOverviews(List<ClientProfile> profiles, Long dietitianId){
+        if(profiles.isEmpty()) return List.of();
+
+        List<Long> clientIds=profiles.stream().map(p->p.getUser().getId()).collect(Collectors.toList());
+        LocalDate from=LocalDate.now().minusDays(30);
+
+        Map<Long,List<DailyLog>> logsByClient=dailyLogRepo.findByClientIdsAndFromDate(clientIds,from)
+            .stream().collect(Collectors.groupingBy(l->l.getClient().getId()));
+
+        Map<Long,List<String>> notesByClient=noteRepo.findByClientIdInOrderByCreatedAtDesc(clientIds)
+            .stream().collect(Collectors.groupingBy(n->n.getClient().getId(),
+                Collectors.mapping(ProgressNote::getNote,Collectors.toList())));
+
+        long unreadAlerts=alertRepo.countByDietitianIdAndReadFalse(dietitianId);
+
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(ClientProfile profile: profiles){
+            Long clientId=profile.getUser().getId();
+            List<DailyLog> logs=logsByClient.getOrDefault(clientId,List.of());
+
+            double avgCal=logs.stream().mapToInt(DailyLog::getCaloriesConsumed).average().orElse(0);
+            double avgPro=logs.stream().mapToDouble(DailyLog::getProteinConsumed).average().orElse(0);
+            double avgCarb=logs.stream().mapToDouble(DailyLog::getCarbsConsumed).average().orElse(0);
+            double avgFat=logs.stream().mapToDouble(DailyLog::getFatConsumed).average().orElse(0);
+            double avgWater=logs.stream().mapToDouble(DailyLog::getWaterIntake).average().orElse(0);
+            int ta=logs.stream().mapToInt(DailyLog::getMealsAssigned).sum();
+            int tc=logs.stream().mapToInt(DailyLog::getMealsCompleted).sum();
+            double comp=ta>0?(double)tc/ta*100:0;
+            double cw=profile.getCurrentWeight()!=null?profile.getCurrentWeight():0;
+            double sw=profile.getStartingWeight()!=null?profile.getStartingWeight():cw;
+            List<String> notes=notesByClient.getOrDefault(clientId,List.of())
+                .stream().limit(5).collect(Collectors.toList());
+
+            Map<String,Object> r=new HashMap<>();
+            r.put("clientId",clientId); r.put("clientName",profile.getUser().getFullName());
+            r.put("currentWeight",cw); r.put("weightChange",cw-sw);
+            r.put("complianceRate",comp); r.put("avgDailyCalories",avgCal);
+            r.put("avgDailyProtein",avgPro); r.put("avgDailyCarbs",avgCarb);
+            r.put("avgDailyFat",avgFat); r.put("waterIntakeAvg",avgWater);
+            r.put("recentProgressNotes",notes); r.put("unreadAlerts",(int)unreadAlerts);
+            r.put("goalWeight",profile.getGoalWeight());
+            result.add(r);
+        }
+        return result;
+    }
+
     public void updateWater(Long clientId, double amount, LocalDate date){
         User client=userRepo.findById(clientId).orElseThrow();
         DailyLog log=dailyLogRepo.findByClientAndLogDate(client,date)
