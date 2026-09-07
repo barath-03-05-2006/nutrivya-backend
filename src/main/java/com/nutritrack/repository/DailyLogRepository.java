@@ -11,4 +11,8 @@ public interface DailyLogRepository extends JpaRepository<DailyLog,Long> {
     List<DailyLog> findByRange(@Param("cid") Long cid, @Param("s") LocalDate s, @Param("e") LocalDate e);
     @Query("SELECT d FROM DailyLog d WHERE d.client.id=:cid AND d.logDate>=:from ORDER BY d.logDate DESC")
     List<DailyLog> findRecent(@Param("cid") Long cid, @Param("from") LocalDate from);
+
+    // NEW: batched version for the client-overview list (avoids N+1 loop)
+    @Query("SELECT d FROM DailyLog d WHERE d.client.id IN :clientIds AND d.logDate>=:from")
+    List<DailyLog> findByClientIdsAndFromDate(@Param("clientIds") List<Long> clientIds, @Param("from") LocalDate from);
 }
