@@ -183,6 +183,14 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
         return ResponseEntity.ok(notes.stream().map(this::toNoteDto).collect(Collectors.toList()));
     }
 
+
+    @GetMapping("/dietitian/clients")
+    public ResponseEntity<?> allClientsOverview(Authentication auth){
+        User d = guard.currentUser(auth);
+        List<ClientProfile> clients = profileRepo.findByDietitianFetched(d);
+        return ResponseEntity.ok(analyticsService.getClientOverviews(clients, d.getId()));
+    }
+
     private Map<String, Object> toNoteDto(ProgressNote n) {
         Map<String, Object> dto = new LinkedHashMap<>();
         dto.put("id", n.getId());
