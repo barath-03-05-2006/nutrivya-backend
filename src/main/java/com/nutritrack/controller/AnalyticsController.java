@@ -65,10 +65,8 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
         User d = guard.currentUser(auth);
         // Only returns clients assigned to THIS dietitian — no cross-dietitian leakage
         List<ClientProfile> clients = profileRepo.findByDietitian(d);
-        List<Map<String,Object>> overviews = clients.stream()
-            .map(c -> analyticsService.getClientOverview(c.getUser().getId()))
-            .collect(Collectors.toList());
-        return ResponseEntity.ok(overviews);
+        // Batched: 3 bulk queries total instead of N sequential per-client queries
+        return ResponseEntity.ok(analyticsService.getClientOverviews(clients, d.getId()));
     }
 
     // ── CLIENT LOGS THEIR OWN WATER ────────────────────────────────
