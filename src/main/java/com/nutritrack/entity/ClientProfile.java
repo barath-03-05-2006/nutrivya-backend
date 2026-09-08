@@ -1,147 +1,50 @@
-package com.nutritrack.controller;
-import com.nutritrack.entity.*;
-import com.nutritrack.repository.*;
-import com.nutritrack.security.AccessGuard;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
-import java.time.LocalDate; import java.util.*; import java.util.stream.Collectors;
+package com.nutritrack.entity;
+import jakarta.persistence.*;
+import java.time.LocalDate;
+@Entity @Table(name="client_profiles")
+public class ClientProfile {
+    @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
+    @OneToOne @JoinColumn(name="user_id",nullable=false) private User user;
+    @ManyToOne @JoinColumn(name="dietitian_id") private User dietitian;
+    private Double currentWeight; private Double startingWeight; private Double goalWeight;
+    private Double height; private Integer age; private String gender;
+    private Integer targetCalories; private Integer targetProtein; private Integer targetCarbs;
+    private Integer targetFat; private Integer targetFiber; private Integer targetWater;
+    private LocalDate startDate;
+    @Column(columnDefinition="TEXT") private String notes;
+    private Boolean medicalDiagnosis; private Boolean regularMedicine;
+    private Boolean pastMedicalHistory; private Boolean medicalSurgery;
+    private String workLifestyle; private String socialHabits;
+    private String physicalActivityLevel; private Boolean supplements;
+    private String dietType; private Boolean foodAllergy;
+    @Column(columnDefinition="TEXT") private String foodAllergyDetails;
 
-@RestController @RequestMapping("/api/clients") public class ClientController {
-    @Autowired private UserRepository userRepo;
-    @Autowired private ClientProfileRepository profileRepo;
-    @Autowired private AccessGuard guard;
-
-    // ── CLIENT READS THEIR OWN PROFILE ─────────────────────────────
-    @GetMapping("/my-profile")
-    public ResponseEntity<?> getMyProfile(Authentication auth){
-        User u = guard.currentUser(auth);
-        return profileRepo.findByUser(u)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
-    }
-
-    // ── DIETITIAN OR CLIENT READS A SPECIFIC CLIENT'S PROFILE ──────
-    @GetMapping("/profile/{clientId}")
-    public ResponseEntity<?> getProfile(@PathVariable Long clientId, Authentication auth){
-        guard.requireClientAccess(auth, clientId); // 403 if not authorized
-        return profileRepo.findByUserId(clientId)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
-    }
-
-    // ── CLIENT SAVES THEIR OWN PROFILE (or dietitian saves on behalf via userId field) ─
-    @PostMapping("/profile")
-    public ResponseEntity<?> saveProfile(@RequestBody Map<String,Object> body, Authentication auth){
-        try {
-            User requester = guard.currentUser(auth);
-            User targetUser;
-
-            if (body.containsKey("userId") && body.get("userId") != null) {
-                // Dietitian is saving on behalf of a client — verify ownership
-                Long targetId = Long.valueOf(body.get("userId").toString());
-                guard.requireDietitianOwnership(auth, targetId);
-                targetUser = userRepo.findById(targetId).orElseThrow();
-            } else {
-                // Client saving their own profile — only allowed for themselves
-                targetUser = requester;
-            }
-
-            ClientProfile p = profileRepo.findByUser(targetUser).orElse(new ClientProfile());
-            p.setUser(targetUser);
-
-            if (body.containsKey("dietitianId") && body.get("dietitianId") != null)
-                userRepo.findById(Long.valueOf(body.get("dietitianId").toString())).ifPresent(p::setDietitian);
-
-            if (v(body,"currentWeight"))  p.setCurrentWeight(d(body,"currentWeight"));
-            if (v(body,"startingWeight")) p.setStartingWeight(d(body,"startingWeight"));
-            if (v(body,"goalWeight"))     p.setGoalWeight(d(body,"goalWeight"));
-            if (v(body,"height"))         p.setHeight(d(body,"height"));
-            if (v(body,"age"))            p.setAge(i(body,"age"));
-            if (v(body,"gender"))         p.setGender(body.get("gender").toString());
-            if (v(body,"targetCalories")) p.setTargetCalories(i(body,"targetCalories"));
-            if (v(body,"targetProtein"))  p.setTargetProtein(i(body,"targetProtein"));
-            if (v(body,"targetCarbs"))    p.setTargetCarbs(i(body,"targetCarbs"));
-            if (v(body,"targetFat"))      p.setTargetFat(i(body,"targetFat"));
-            if (v(body,"targetFiber"))    p.setTargetFiber(i(body,"targetFiber"));
-            if (v(body,"targetWater"))    p.setTargetWater(i(body,"targetWater"));
-            if (v(body,"notes"))          p.setNotes(body.get("notes").toString());
-            if (v(body,"startDate")) {
-                try { p.setStartDate(LocalDate.parse(body.get("startDate").toString())); }
-                catch (Exception ignored) {}
-            }
-            // Questionnaire fields
-            if (body.containsKey("medicalDiagnosis"))    p.setMedicalDiagnosis(bool(body,"medicalDiagnosis"));
-            if (body.containsKey("regularMedicine"))     p.setRegularMedicine(bool(body,"regularMedicine"));
-            if (body.containsKey("pastMedicalHistory"))  p.setPastMedicalHistory(bool(body,"pastMedicalHistory"));
-            if (body.containsKey("medicalSurgery"))      p.setMedicalSurgery(bool(body,"medicalSurgery"));
-            if (v(body,"workLifestyle"))         p.setWorkLifestyle(body.get("workLifestyle").toString());
-            if (v(body,"socialHabits"))          p.setSocialHabits(body.get("socialHabits").toString());
-            if (v(body,"physicalActivityLevel")) p.setPhysicalActivityLevel(body.get("physicalActivityLevel").toString());
-            if (body.containsKey("supplements")) p.setSupplements(bool(body,"supplements"));
-            if (v(body,"dietType"))              p.setDietType(body.get("dietType").toString());
-            if (body.containsKey("foodAllergy")) p.setFoodAllergy(bool(body,"foodAllergy"));
-            if (v(body,"foodAllergyDetails"))    p.setFoodAllergyDetails(body.get("foodAllergyDetails").toString());
-
-            return ResponseEntity.ok(profileRepo.save(p));
-        } catch (AccessGuard.AccessDeniedException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    // ── DIETITIAN VIEWS THEIR OWN CLIENT LIST ─────────────────────
-    @GetMapping("/dietitian/my-clients")
-    public ResponseEntity<List<ClientProfile>> getMyClients(Authentication auth){
-        User d = guard.currentUser(auth);
-        // Uses fetched query: 1 query instead of ~2N (avoids EAGER-triggered N+1 on user/dietitian)
-        return ResponseEntity.ok(profileRepo.findByDietitianFetched(d));
-    }
-
-    @GetMapping("/dietitians")
-    public ResponseEntity<List<User>> getDietitians(){
-        return ResponseEntity.ok(userRepo.findByRole(User.Role.DIETITIAN));
-    }
-
-    // ── DIETITIAN SETS TARGETS FOR A SPECIFIC CLIENT ───────────────
-    @PostMapping("/set-targets/{clientId}")
-    public ResponseEntity<?> setTargets(
-            @PathVariable Long clientId,
-            @RequestBody Map<String,Integer> t,
-            Authentication auth){
-        try {
-            guard.requireDietitianOwnership(auth, clientId); // only assigned dietitian
-            ClientProfile p = profileRepo.findByUserId(clientId)
-                .orElseThrow(() -> new RuntimeException("Profile not found"));
-            if (t.containsKey("targetCalories")) p.setTargetCalories(t.get("targetCalories"));
-            if (t.containsKey("targetProtein"))  p.setTargetProtein(t.get("targetProtein"));
-            if (t.containsKey("targetCarbs"))    p.setTargetCarbs(t.get("targetCarbs"));
-            if (t.containsKey("targetFat"))      p.setTargetFat(t.get("targetFat"));
-            if (t.containsKey("targetFiber"))    p.setTargetFiber(t.get("targetFiber"));
-            if (t.containsKey("targetWater"))    p.setTargetWater(t.get("targetWater"));
-            return ResponseEntity.ok(profileRepo.save(p));
-        } catch (AccessGuard.AccessDeniedException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    private boolean v(Map<String,Object> m, String k) {
-        return m.containsKey(k) && m.get(k) != null && !m.get(k).toString().isEmpty();
-    }
-    private Double d(Map<String,Object> m, String k) {
-        try { return Double.parseDouble(m.get(k).toString()); } catch (Exception e) { return null; }
-    }
-    private Integer i(Map<String,Object> m, String k) {
-        try { return Integer.parseInt(m.get(k).toString()); } catch (Exception e) { return null; }
-    }
-    private Boolean bool(Map<String,Object> m, String k) {
-        Object val = m.get(k);
-        if (val instanceof Boolean) return (Boolean) val;
-        if (val != null) return Boolean.parseBoolean(val.toString());
-        return null;
-    }
+    public Long getId(){return id;} public void setId(Long v){id=v;}
+    public User getUser(){return user;} public void setUser(User v){user=v;}
+    public User getDietitian(){return dietitian;} public void setDietitian(User v){dietitian=v;}
+    public Double getCurrentWeight(){return currentWeight;} public void setCurrentWeight(Double v){currentWeight=v;}
+    public Double getStartingWeight(){return startingWeight;} public void setStartingWeight(Double v){startingWeight=v;}
+    public Double getGoalWeight(){return goalWeight;} public void setGoalWeight(Double v){goalWeight=v;}
+    public Double getHeight(){return height;} public void setHeight(Double v){height=v;}
+    public Integer getAge(){return age;} public void setAge(Integer v){age=v;}
+    public String getGender(){return gender;} public void setGender(String v){gender=v;}
+    public Integer getTargetCalories(){return targetCalories;} public void setTargetCalories(Integer v){targetCalories=v;}
+    public Integer getTargetProtein(){return targetProtein;} public void setTargetProtein(Integer v){targetProtein=v;}
+    public Integer getTargetCarbs(){return targetCarbs;} public void setTargetCarbs(Integer v){targetCarbs=v;}
+    public Integer getTargetFat(){return targetFat;} public void setTargetFat(Integer v){targetFat=v;}
+    public Integer getTargetFiber(){return targetFiber;} public void setTargetFiber(Integer v){targetFiber=v;}
+    public Integer getTargetWater(){return targetWater;} public void setTargetWater(Integer v){targetWater=v;}
+    public LocalDate getStartDate(){return startDate;} public void setStartDate(LocalDate v){startDate=v;}
+    public String getNotes(){return notes;} public void setNotes(String v){notes=v;}
+    public Boolean getMedicalDiagnosis(){return medicalDiagnosis;} public void setMedicalDiagnosis(Boolean v){medicalDiagnosis=v;}
+    public Boolean getRegularMedicine(){return regularMedicine;} public void setRegularMedicine(Boolean v){regularMedicine=v;}
+    public Boolean getPastMedicalHistory(){return pastMedicalHistory;} public void setPastMedicalHistory(Boolean v){pastMedicalHistory=v;}
+    public Boolean getMedicalSurgery(){return medicalSurgery;} public void setMedicalSurgery(Boolean v){medicalSurgery=v;}
+    public String getWorkLifestyle(){return workLifestyle;} public void setWorkLifestyle(String v){workLifestyle=v;}
+    public String getSocialHabits(){return socialHabits;} public void setSocialHabits(String v){socialHabits=v;}
+    public String getPhysicalActivityLevel(){return physicalActivityLevel;} public void setPhysicalActivityLevel(String v){physicalActivityLevel=v;}
+    public Boolean getSupplements(){return supplements;} public void setSupplements(Boolean v){supplements=v;}
+    public String getDietType(){return dietType;} public void setDietType(String v){dietType=v;}
+    public Boolean getFoodAllergy(){return foodAllergy;} public void setFoodAllergy(Boolean v){foodAllergy=v;}
+    public String getFoodAllergyDetails(){return foodAllergyDetails;} public void setFoodAllergyDetails(String v){foodAllergyDetails=v;}
 }
