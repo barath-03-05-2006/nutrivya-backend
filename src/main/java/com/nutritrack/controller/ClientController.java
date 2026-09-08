@@ -96,18 +96,13 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
     @GetMapping("/dietitian/my-clients")
     public ResponseEntity<List<ClientProfile>> getMyClients(Authentication auth){
         User d = guard.currentUser(auth);
-        return ResponseEntity.ok(profileRepo.findByDietitian(d));
+        // Uses fetched query: 1 query instead of ~2N (avoids EAGER-triggered N+1 on user/dietitian)
+        return ResponseEntity.ok(profileRepo.findByDietitianFetched(d));
     }
 
     @GetMapping("/dietitians")
     public ResponseEntity<List<User>> getDietitians(){
         return ResponseEntity.ok(userRepo.findByRole(User.Role.DIETITIAN));
-    }
-
-    @GetMapping("/dietitian/my-clients")
-    public ResponseEntity<List<ClientProfile>> getMyClients(Authentication auth){
-        User d = guard.currentUser(auth);
-        return ResponseEntity.ok(profileRepo.findByDietitianFetched(d));
     }
 
     // ── DIETITIAN SETS TARGETS FOR A SPECIFIC CLIENT ───────────────
