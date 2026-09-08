@@ -64,8 +64,9 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
     public ResponseEntity<?> allClientsOverview(Authentication auth){
         User d = guard.currentUser(auth);
         // Only returns clients assigned to THIS dietitian — no cross-dietitian leakage
-        List<ClientProfile> clients = profileRepo.findByDietitian(d);
-        // Batched: 3 bulk queries total instead of N sequential per-client queries
+        // Uses fetched query: 1 query instead of ~2N (avoids EAGER-triggered N+1 on user/dietitian)
+        List<ClientProfile> clients = profileRepo.findByDietitianFetched(d);
+        // Batched: 3 more bulk queries total instead of N sequential per-client queries
         return ResponseEntity.ok(analyticsService.getClientOverviews(clients, d.getId()));
     }
 
@@ -181,14 +182,6 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
         User client = guard.currentUser(auth);
         List<ProgressNote> notes = noteRepo.findByClientIdOrderByCreatedAtDesc(client.getId());
         return ResponseEntity.ok(notes.stream().map(this::toNoteDto).collect(Collectors.toList()));
-    }
-
-
-    @GetMapping("/dietitian/clients")
-    public ResponseEntity<?> allClientsOverview(Authentication auth){
-        User d = guard.currentUser(auth);
-        List<ClientProfile> clients = profileRepo.findByDietitianFetched(d);
-        return ResponseEntity.ok(analyticsService.getClientOverviews(clients, d.getId()));
     }
 
     private Map<String, Object> toNoteDto(ProgressNote n) {
