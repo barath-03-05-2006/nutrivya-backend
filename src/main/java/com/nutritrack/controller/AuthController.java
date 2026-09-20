@@ -69,6 +69,23 @@ public class AuthController {
         return ResponseEntity.ok(Map.of("message", "Logged out"));
     }
 
+    // Called by the app right after login (and again if the token rotates) so the backend
+    // knows where to send push notifications for this user. Overwrites any previous token —
+    // logging in on a new device is treated as replacing the old one.
+    @PostMapping("/fcm-token")
+    public ResponseEntity<?> registerFcmToken(@RequestBody Map<String, String> body, Authentication auth) {
+        if (auth == null) return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+        String token = body.get("token");
+        if (token == null || token.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "token is required"));
+        }
+        userRepo.findByEmail(auth.getName()).ifPresent(u -> {
+            u.setFcmToken(token);
+            userRepo.save(u);
+        });
+        return ResponseEntity.ok(Map.of("success", true));
+    }
+
     private String formatWait(long seconds) {
         if (seconds < 60) return seconds + " second" + (seconds == 1 ? "" : "s");
         long minutes = (seconds + 59) / 60;
