@@ -1,4 +1,5 @@
 package com.nutritrack.service;
+import com.nutritrack.entity.RefreshToken;
 import com.nutritrack.entity.User; import com.nutritrack.repository.UserRepository;
 import com.nutritrack.exception.AccountLockedException;
 import com.nutritrack.exception.InvalidCredentialsException;
@@ -19,6 +20,7 @@ public class AuthService {
     @Autowired private JwtUtil jwtUtil;
     @Autowired private AuthenticationManager authManager;
     @Autowired private CustomUserDetailsService uds;
+    @Autowired private RefreshTokenService refreshTokenService;
 
     // After this many wrong passwords in a row, the account gets locked out.
     private static final int MAX_ATTEMPTS = 3;
@@ -73,7 +75,9 @@ public class AuthService {
         }
 
         String token=jwtUtil.generateToken(uds.loadUserByUsername(email));
-        return Map.of("token",token,"email",u.getEmail(),"role",u.getRole().name(),
+        RefreshToken refreshToken = refreshTokenService.issue(u);
+        return Map.of("token",token,"refreshToken",refreshToken.getToken(),
+            "email",u.getEmail(),"role",u.getRole().name(),
             "fullName",u.getFullName()!=null?u.getFullName():"","userId",u.getId());
     }
 
@@ -90,7 +94,23 @@ public class AuthService {
         u.setPhoneNumber(phone); u.setRole(User.Role.CLIENT);
         userRepo.save(u);
         String token=jwtUtil.generateToken(uds.loadUserByUsername(email));
-        return Map.of("token",token,"email",u.getEmail(),"role",u.getRole().name(),
+        RefreshToken refreshToken = refreshTokenService.issue(u);
+        return Map.of("token",token,"refreshToken",refreshToken.getToken(),
+            "email",u.getEmail(),"role",u.getRole().name(),
             "fullName",u.getFullName()!=null?u.getFullName():"","userId",u.getId());
+    }
+
+    // Exchanges a valid refresh token for a fresh access token + rotated refresh token.
+    public Map<String,Object> refresh(String refreshToken){
+        User u = refreshTokenService.consumeAndRotate(refreshToken);
+        String token = jwtUtil.generateToken(uds.loadUserByUsername(u.getEmail()));
+        RefreshToken newRefreshToken = refreshTokenService.issue(u);
+        return Map.of("token",token,"refreshToken",newRefreshToken.getToken(),
+            "email",u.getEmail(),"role",u.getRole().name(),
+            "fullName",u.getFullName()!=null?u.getFullName():"","userId",u.getId());
+    }
+
+    public void logout(String email){
+        userRepo.findByEmail(email).ifPresent(refreshTokenService::revokeAllForUser);
     }
 }
