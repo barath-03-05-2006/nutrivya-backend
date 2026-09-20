@@ -19,6 +19,8 @@ public class MealPlanService {
     @Autowired private DailyLogRepository dailyLogRepo;
     @Autowired private AlertRepository alertRepo;
     @Autowired private EmailService emailService;
+    @Autowired private ClientProfileRepository profileRepo;
+    @Autowired private PushNotificationService pushService;
     @org.springframework.beans.factory.annotation.Value("${app.frontend.url:http://localhost:3000}")
     private String frontendUrl;
 
@@ -273,6 +275,41 @@ public class MealPlanService {
         }
         // If the meal isn't complete yet, nothing has hit the log for it — completeMeal() will
         // pick up this item's new actual values when the client later taps "Mark as Complete".
+
+        try { sendNutritionUpdatedPush(client, mealWasCompleted, log); }
+        catch (Exception e) { System.err.println("[Push] Nutrition-update notify failed: " + e.getMessage()); }
+    }
+
+    /**
+     * Notifies the client whenever the dietitian recalculates a food item's actual nutrition.
+     * If the meal was already complete (so today's totals actually changed), the message calls
+     * out any nutrient now under 70% of target — same threshold AlertService uses for the
+     * dietitian-facing low-nutrition alert — otherwise it's a general "was updated" notice.
+     */
+    private void sendNutritionUpdatedPush(User client, boolean mealWasCompleted, DailyLog log) {
+        String title = "Today's meal plan was updated";
+        String body = "Your dietitian recalculated your nutrition for today.";
+
+        if (mealWasCompleted) {
+            ClientProfile profile = profileRepo.findByUserId(client.getId()).orElse(null);
+            if (profile != null) {
+                List<String> low = new ArrayList<>();
+                if (profile.getTargetProtein() != null && profile.getTargetProtein() > 0
+                        && log.getProteinConsumed() < profile.getTargetProtein() * 0.7) low.add("protein");
+                if (profile.getTargetCalories() != null && profile.getTargetCalories() > 0
+                        && log.getCaloriesConsumed() < profile.getTargetCalories() * 0.7) low.add("calories");
+                if (profile.getTargetCarbs() != null && profile.getTargetCarbs() > 0
+                        && log.getCarbsConsumed() < profile.getTargetCarbs() * 0.7) low.add("carbs");
+                if (profile.getTargetFat() != null && profile.getTargetFat() > 0
+                        && log.getFatConsumed() < profile.getTargetFat() * 0.7) low.add("fat");
+
+                if (!low.isEmpty()) {
+                    body = "Your meal was updated — you're currently low on " + String.join(" and ", low) + " today.";
+                }
+            }
+        }
+
+        pushService.send(client, title, body, Map.of("type", "NUTRITION_UPDATED"));
     }
 
     private int nz(Integer v) { return v != null ? v : 0; }
