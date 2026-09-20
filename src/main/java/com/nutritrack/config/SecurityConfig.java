@@ -1,5 +1,6 @@
 package com.nutritrack.config;
 
+import com.nutritrack.security.JwtAuthEntryPoint;
 import com.nutritrack.security.JwtFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.*;
@@ -23,6 +24,7 @@ public class SecurityConfig {
     @Autowired private Environment env;
 
     @Autowired private JwtFilter jwtFilter;
+    @Autowired private JwtAuthEntryPoint jwtAuthEntryPoint;
 
     @Bean public PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
 
@@ -36,11 +38,13 @@ public class SecurityConfig {
             .cors(c -> c.configurationSource(corsSource()))
             .csrf(c -> c.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(e -> e.authenticationEntryPoint(jwtAuthEntryPoint))
             .authorizeHttpRequests(a -> a
                 // Only login is fully public
             		.requestMatchers(
             		        "/api/auth/login",
             		        "/api/auth/register",
+            		        "/api/auth/refresh",
             		        "/api/auth/forgot-password",
             		        "/api/auth/reset-password",
             		        "/privacy-policy.html"
