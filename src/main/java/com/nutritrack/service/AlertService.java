@@ -25,9 +25,15 @@ public class AlertService {
     public void runAllChecks() {
         profileRepo.findAll().forEach(p -> {
             if (p.getDietitian() == null) return;
-            checkMissedMeals(p);
-            checkNutrition(p);
-            checkCompliance(p);
+            try {
+                checkMissedMeals(p);
+                checkNutrition(p);
+                checkCompliance(p);
+            } catch (Exception e) {
+                // One client's bad data shouldn't stop everyone after them from being checked.
+                System.err.println("[AlertService] Failed checking client "
+                    + p.getUser().getId() + ": " + e.getMessage());
+            }
         });
     }
 
