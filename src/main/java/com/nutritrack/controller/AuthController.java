@@ -4,6 +4,7 @@ import com.nutritrack.entity.ClientProfile;
 import com.nutritrack.entity.User;
 import com.nutritrack.exception.AccountLockedException;
 import com.nutritrack.exception.InvalidCredentialsException;
+import com.nutritrack.exception.InvalidRefreshTokenException;
 import com.nutritrack.repository.ClientProfileRepository;
 import com.nutritrack.repository.UserRepository;
 import com.nutritrack.service.AuthService;
@@ -47,6 +48,25 @@ public class AuthController {
         } catch (Exception e) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid email or password"));
         }
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@RequestBody Map<String, String> body) {
+        try {
+            return ResponseEntity.ok(authService.refresh(body.get("refreshToken")));
+        } catch (InvalidRefreshTokenException e) {
+            // Refresh token is gone/expired too — this is a real "please log in again",
+            // not the silent-retry case an expired access token triggers.
+            return ResponseEntity.status(401).body(Map.of("error", "Session expired. Please log in again.", "sessionExpired", true));
+        }
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(Authentication auth) {
+        if (auth != null && auth.getName() != null) {
+            authService.logout(auth.getName());
+        }
+        return ResponseEntity.ok(Map.of("message", "Logged out"));
     }
 
     private String formatWait(long seconds) {
