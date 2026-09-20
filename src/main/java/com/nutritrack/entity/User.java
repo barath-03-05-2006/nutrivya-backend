@@ -13,6 +13,11 @@ public class User {
     private String resetToken;
     private LocalDateTime resetTokenExpiry;
 
+    // Firebase Cloud Messaging device token for push notifications. Overwritten on every
+    // login/token-registration — a user is treated as having one active device at a time.
+    @Column(length = 512)
+    private String fcmToken;
+
     // --- Brute-force login protection ---
     // Consecutive bad-password attempts since the last successful login or lock expiry.
     private int failedLoginAttempts;
@@ -37,5 +42,5 @@ public class User {
     public int getFailedLoginAttempts(){return failedLoginAttempts;} public void setFailedLoginAttempts(int v){failedLoginAttempts=v;}
     public LocalDateTime getLockedUntil(){return lockedUntil;} public void setLockedUntil(LocalDateTime v){lockedUntil=v;}
     public int getLockoutStreak(){return lockoutStreak;} public void setLockoutStreak(int v){lockoutStreak=v;}
+    public String getFcmToken(){return fcmToken;} public void setFcmToken(String v){fcmToken=v;}
 }
-
