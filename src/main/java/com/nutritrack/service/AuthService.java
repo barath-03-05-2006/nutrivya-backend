@@ -111,6 +111,10 @@ public class AuthService {
     }
 
     public void logout(String email){
-        userRepo.findByEmail(email).ifPresent(refreshTokenService::revokeAllForUser);
+        userRepo.findByEmail(email).ifPresent(u -> {
+            refreshTokenService.revokeAllForUser(u);
+            u.setFcmToken(null);
+            userRepo.save(u);
+        });
     }
 }
