@@ -1,5 +1,6 @@
 package com.nutritrack.security;
 
+import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +14,11 @@ import java.io.IOException;
 
 @Component
 public class JwtFilter extends OncePerRequestFilter {
+
+    // Read by JwtAuthEntryPoint to tell an expired access token apart from a
+    // missing/malformed one, so the client knows whether to silently call
+    // /api/auth/refresh or send the user back to login.
+    public static final String EXPIRED_ATTR = "jwt.expired";
 
     @Autowired private JwtUtil jwtUtil;
     @Autowired private UserDetailsService userDetailsService;
@@ -40,6 +46,8 @@ public class JwtFilter extends OncePerRequestFilter {
                         SecurityContextHolder.getContext().setAuthentication(auth);
                     }
                 }
+            } catch (ExpiredJwtException e) {
+                req.setAttribute(EXPIRED_ATTR, true);
             } catch (Exception ignored) {}
         }
         chain.doFilter(req, res);
