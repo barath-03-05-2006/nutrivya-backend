@@ -7,6 +7,7 @@ import java.util.*; import java.util.function.Function;
 @Component
 public class JwtUtil {
     @Value("${jwt.secret}") private String secret;
+    // How long a login session lasts before the client needs to log in again.
     @Value("${jwt.expiration}") private long expiration;
     private SecretKey key(){return Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));}
     public String generateToken(UserDetails u){
