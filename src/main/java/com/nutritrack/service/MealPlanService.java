@@ -117,7 +117,6 @@ public class MealPlanService {
         try { sendPlanAssignedEmail(client, dietitian, saved); }
         catch (Exception e) { System.err.println("[MealPlan] Email failed: " + e.getMessage()); }
 
-        // ...and by push, so they see it right away on their phone
         try { sendPlanAssignedPush(client, saved); }
         catch (Exception e) { System.err.println("[Push] Plan-assigned notify failed: " + e.getMessage()); }
 
@@ -316,22 +315,17 @@ public class MealPlanService {
         pushService.send(client, title, body, Map.of("type", "NUTRITION_UPDATED"));
     }
 
-    /** Tells the client a dietitian just assigned a meal plan for a specific date. */
-    private void sendPlanAssignedPush(User client, MealPlan plan) {
-        String date = plan.getPlanDate() != null ? plan.getPlanDate().toString() : "";
-        String title = "New meal plan assigned";
-        String body = date.isEmpty()
-                ? "Your dietitian added a new meal plan for you."
-                : "Your dietitian added a meal plan for " + date + ".";
-        Map<String, String> data = new HashMap<>();
-        data.put("type", "PLAN_ASSIGNED");
-        data.put("planDate", date);
-        data.put("planId", String.valueOf(plan.getId()));
-        pushService.send(client, title, body, data);
-    }
-
     private int nz(Integer v) { return v != null ? v : 0; }
     private double nz(Double v) { return v != null ? v : 0.0; }
+
+    private void sendPlanAssignedPush(User client, MealPlan plan) {
+        String planName = plan.getPlanName() != null ? plan.getPlanName() : "Meal Plan";
+        String planDate = plan.getPlanDate() != null ? plan.getPlanDate().toString() : "today";
+        pushService.send(client,
+                "New meal plan assigned! 🎉",
+                planName + " for " + planDate + " is ready — tap to view.",
+                Map.of("type", "PLAN_ASSIGNED", "planId", String.valueOf(plan.getId())));
+    }
 
     private void sendPlanAssignedEmail(User client, User dietitian, MealPlan plan) {
         String dietName = dietitian.getFullName() != null ? dietitian.getFullName() : "Your dietitian";
