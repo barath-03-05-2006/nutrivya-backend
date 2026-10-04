@@ -17,6 +17,7 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
     @Autowired private WeightLogRepository weightLogRepo;
     @Autowired private ProgressNoteRepository noteRepo;
     @Autowired private AccessGuard guard;
+    @Autowired private com.nutritrack.service.PushNotificationService pushService;
 
     // ── CLIENT'S OWN DAILY SUMMARY ──────────────────────────────────
     @GetMapping("/my/daily")
@@ -125,6 +126,18 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
         n.setDietitian(d);
         n.setNote(noteText.trim());
         noteRepo.save(n);
+
+        try {
+            String dietName = d.getFullName() != null ? d.getFullName() : "Your dietitian";
+            String preview = noteText.trim().length() > 100
+                    ? noteText.trim().substring(0, 100) + "…"
+                    : noteText.trim();
+            pushService.send(client, "New note from " + dietName, preview,
+                    Map.of("type", "PROGRESS_NOTE", "noteId", String.valueOf(n.getId())));
+        } catch (Exception e) {
+            System.err.println("[Push] Progress-note notify failed: " + e.getMessage());
+        }
+
         return ResponseEntity.ok(Map.of("success", true));
     }
 
