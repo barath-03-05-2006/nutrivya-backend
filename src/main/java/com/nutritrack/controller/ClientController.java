@@ -2,6 +2,7 @@ package com.nutritrack.controller;
 import com.nutritrack.entity.*;
 import com.nutritrack.repository.*;
 import com.nutritrack.security.AccessGuard;
+import com.nutritrack.service.ClientDeletionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -12,6 +13,7 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
     @Autowired private UserRepository userRepo;
     @Autowired private ClientProfileRepository profileRepo;
     @Autowired private AccessGuard guard;
+    @Autowired private ClientDeletionService deletionService;
 
     // ── CLIENT READS THEIR OWN PROFILE ─────────────────────────────
     @GetMapping("/my-profile")
@@ -126,6 +128,21 @@ import java.time.LocalDate; import java.util.*; import java.util.stream.Collecto
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ── DIETITIAN PERMANENTLY DELETES A CLIENT ACCOUNT + ALL THEIR DATA ──
+    @DeleteMapping("/{clientId}")
+    public ResponseEntity<?> deleteClient(@PathVariable Long clientId, Authentication auth){
+        try {
+            guard.requireDietitianOwnership(auth, clientId); // only the assigned dietitian
+            deletionService.deleteClientAccount(clientId);
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (AccessGuard.AccessDeniedException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error",
+                e.getMessage() != null ? e.getMessage() : "Failed to delete client"));
         }
     }
 
